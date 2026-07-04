@@ -18,56 +18,68 @@ public class PackageRepository {
     }
 
     public List<ServicePackage> findByOperator(String operatorId) {
-        return db.runSync(conn -> {
-            List<ServicePackage> list = new ArrayList<>();
-            try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM packages WHERE operator_id = ?")) {
-                ps.setString(1, operatorId.toLowerCase(Locale.ROOT));
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        list.add(map(rs));
+        try {
+            return db.runSync(conn -> {
+                List<ServicePackage> list = new ArrayList<>();
+                try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM packages WHERE operator_id = ?")) {
+                    ps.setString(1, operatorId.toLowerCase(Locale.ROOT));
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            list.add(map(rs));
+                        }
                     }
                 }
-            }
-            return list;
-        });
+                return list;
+            });
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public Optional<ServicePackage> findById(int id) {
-        return db.runSync(conn -> {
-            try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM packages WHERE id = ?")) {
-                ps.setInt(1, id);
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next()) {
-                        return Optional.of(map(rs));
+        try {
+            return db.runSync(conn -> {
+                try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM packages WHERE id = ?")) {
+                    ps.setInt(1, id);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (rs.next()) {
+                            return Optional.of(map(rs));
+                        }
                     }
                 }
-            }
-            return Optional.empty();
-        });
+                return Optional.empty();
+            });
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public int create(ServicePackage pkg) {
-        return db.runSync(conn -> {
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "INSERT INTO packages (operator_id, name, price, minutes, sms, mb, duration_days, zone_id) VALUES (?,?,?,?,?,?,?,?)",
-                    Statement.RETURN_GENERATED_KEYS)) {
-                ps.setString(1, pkg.operatorId().toLowerCase(Locale.ROOT));
-                ps.setString(2, pkg.name());
-                ps.setDouble(3, pkg.price());
-                ps.setDouble(4, pkg.minutes());
-                ps.setDouble(5, pkg.sms());
-                ps.setDouble(6, pkg.mb());
-                ps.setInt(7, pkg.durationDays());
-                ps.setString(8, pkg.zoneId());
-                ps.executeUpdate();
-                try (ResultSet keys = ps.getGeneratedKeys()) {
-                    if (keys.next()) {
-                        return keys.getInt(1);
+        try {
+            return db.runSync(conn -> {
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "INSERT INTO packages (operator_id, name, price, minutes, sms, mb, duration_days, zone_id) VALUES (?,?,?,?,?,?,?,?)",
+                        Statement.RETURN_GENERATED_KEYS)) {
+                    ps.setString(1, pkg.operatorId().toLowerCase(Locale.ROOT));
+                    ps.setString(2, pkg.name());
+                    ps.setDouble(3, pkg.price());
+                    ps.setDouble(4, pkg.minutes());
+                    ps.setDouble(5, pkg.sms());
+                    ps.setDouble(6, pkg.mb());
+                    ps.setInt(7, pkg.durationDays());
+                    ps.setString(8, pkg.zoneId());
+                    ps.executeUpdate();
+                    try (ResultSet keys = ps.getGeneratedKeys()) {
+                        if (keys.next()) {
+                            return keys.getInt(1);
+                        }
                     }
                 }
-            }
-            return -1;
-        });
+                return -1;
+            });
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private ServicePackage map(ResultSet rs) throws SQLException {
