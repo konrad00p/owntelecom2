@@ -13,9 +13,14 @@ import java.sql.Statement;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.function.Function;
 
 public class DatabaseManager {
+
+    // Własny interfejs funkcyjny, który pozwala lambdom rzucać SQLException!
+    @FunctionalInterface
+    public interface SQLFunction<T> {
+        T apply(Connection connection) throws SQLException;
+    }
 
     private final OwnTelecomPlugin plugin;
     private final ConfigManager configManager;
@@ -64,164 +69,169 @@ public class DatabaseManager {
     }
 
     private void createSchema() {
-        runSync(conn -> {
-            try (Statement st = conn.createStatement()) {
-                st.execute("""
-                    CREATE TABLE IF NOT EXISTS operators (
-                        id TEXT PRIMARY KEY,
-                        display_name TEXT NOT NULL,
-                        owner_uuid TEXT NOT NULL,
-                        created_at INTEGER NOT NULL,
-                        balance REAL DEFAULT 0,
-                        prepaid_minute REAL DEFAULT 1.0,
-                        prepaid_sms REAL DEFAULT 0.5,
-                        prepaid_mb REAL DEFAULT 0.1,
-                        pass_cost_to_client INTEGER DEFAULT 1
-                    )
-                    """);
-                st.execute("""
-                    CREATE TABLE IF NOT EXISTS stations (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        operator_id TEXT NOT NULL,
-                        world TEXT NOT NULL,
-                        x INTEGER NOT NULL,
-                        y INTEGER NOT NULL,
-                        z INTEGER NOT NULL,
-                        technology TEXT NOT NULL,
-                        level INTEGER DEFAULT 1,
-                        broken INTEGER DEFAULT 0,
-                        last_maintenance INTEGER DEFAULT 0,
-                        FOREIGN KEY (operator_id) REFERENCES operators(id)
-                    )
-                    """);
-                st.execute("""
-                    CREATE TABLE IF NOT EXISTS subscribers (
-                        player_uuid TEXT PRIMARY KEY,
-                        operator_id TEXT NOT NULL,
-                        package_id INTEGER,
-                        package_minutes_left REAL DEFAULT 0,
-                        package_sms_left REAL DEFAULT 0,
-                        package_mb_left REAL DEFAULT 0,
-                        package_expires_at INTEGER DEFAULT 0,
-                        FOREIGN KEY (operator_id) REFERENCES operators(id)
-                    )
-                    """);
-                st.execute("""
-                    CREATE TABLE IF NOT EXISTS agreements (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        operator_a TEXT NOT NULL,
-                        operator_b TEXT NOT NULL,
-                        type TEXT NOT NULL,
-                        roaming_minute REAL DEFAULT 0,
-                        roaming_sms REAL DEFAULT 0,
-                        roaming_mb REAL DEFAULT 0,
-                        call_minute REAL DEFAULT 0,
-                        call_sms REAL DEFAULT 0,
-                        pass_roaming_to_client INTEGER DEFAULT 0,
-                        pass_call_to_client INTEGER DEFAULT 0,
-                        active INTEGER DEFAULT 1,
-                        UNIQUE(operator_a, operator_b, type)
-                    )
-                    """);
-                st.execute("""
-                    CREATE TABLE IF NOT EXISTS zones (
-                        id TEXT PRIMARY KEY,
-                        operator_id TEXT NOT NULL,
-                        type TEXT NOT NULL,
-                        display_name TEXT NOT NULL,
-                        extra_minute REAL DEFAULT 0,
-                        extra_sms REAL DEFAULT 0,
-                        extra_mb REAL DEFAULT 0,
-                        FOREIGN KEY (operator_id) REFERENCES operators(id)
-                    )
-                    """);
-                st.execute("""
-                    CREATE TABLE IF NOT EXISTS zone_members (
-                        zone_id TEXT NOT NULL,
-                        target_operator_id TEXT NOT NULL,
-                        PRIMARY KEY (zone_id, target_operator_id)
-                    )
-                    """);
-                st.execute("""
-                    CREATE TABLE IF NOT EXISTS packages (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        operator_id TEXT NOT NULL,
-                        name TEXT NOT NULL,
-                        price REAL NOT NULL,
-                        minutes REAL DEFAULT 0,
-                        sms REAL DEFAULT 0,
-                        mb REAL DEFAULT 0,
-                        duration_days INTEGER DEFAULT 30,
-                        zone_id TEXT,
-                        FOREIGN KEY (operator_id) REFERENCES operators(id)
-                    )
-                    """);
-                st.execute("""
-                    CREATE TABLE IF NOT EXISTS websites (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        slug TEXT UNIQUE NOT NULL,
-                        owner_uuid TEXT NOT NULL,
-                        operator_id TEXT,
-                        server_id INTEGER,
-                        title TEXT NOT NULL,
-                        enabled INTEGER DEFAULT 1,
-                        broken INTEGER DEFAULT 0,
-                        template TEXT DEFAULT 'default'
-                    )
-                    """);
-                st.execute("""
-                    CREATE TABLE IF NOT EXISTS website_lines (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        website_id INTEGER NOT NULL,
-                        sort_order INTEGER NOT NULL,
-                        content TEXT NOT NULL,
-                        FOREIGN KEY (website_id) REFERENCES websites(id)
-                    )
-                    """);
-                st.execute("""
-                    CREATE TABLE IF NOT EXISTS datacenters (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        owner_uuid TEXT NOT NULL,
-                        world TEXT NOT NULL,
-                        x INTEGER NOT NULL,
-                        y INTEGER NOT NULL,
-                        z INTEGER NOT NULL,
-                        level INTEGER DEFAULT 1,
-                        broken INTEGER DEFAULT 0
-                    )
-                    """);
-                st.execute("""
-                    CREATE TABLE IF NOT EXISTS player_meta (
-                        player_uuid TEXT PRIMARY KEY,
-                        last_operator_create INTEGER DEFAULT 0,
-                        has_created_operator INTEGER DEFAULT 0
-                    )
-                    """);
-                st.execute("CREATE INDEX IF NOT EXISTS idx_stations_operator ON stations(operator_id)");
-                st.execute("CREATE INDEX IF NOT EXISTS idx_stations_world ON stations(world, x, z)");
-                st.execute("CREATE INDEX IF NOT EXISTS idx_subscribers_operator ON subscribers(operator_id)");
-            }
-            return null;
-        });
-    }
-
-    public <T> CompletableFuture<T> runAsync(Function<Connection, T> task) {
-        return CompletableFuture.supplyAsync(() -> runSync(task), executor);
-    }
-
-    public <T> T runSync(Function<Connection, T> task) {
-        try (Connection conn = dataSource.getConnection()) {
-            return task.apply(conn);
+        try {
+            runSync(conn -> {
+                try (Statement st = conn.createStatement()) {
+                    st.execute("""
+                        CREATE TABLE IF NOT EXISTS operators (
+                            id TEXT PRIMARY KEY,
+                            display_name TEXT NOT NULL,
+                            owner_uuid TEXT NOT NULL,
+                            created_at INTEGER NOT NULL,
+                            balance REAL DEFAULT 0,
+                            prepaid_minute REAL DEFAULT 1.0,
+                            prepaid_sms REAL DEFAULT 0.5,
+                            prepaid_mb REAL DEFAULT 0.1,
+                            pass_cost_to_client INTEGER DEFAULT 1
+                        )
+                        """);
+                    st.execute("""
+                        CREATE TABLE IF NOT EXISTS stations (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            operator_id TEXT NOT NULL,
+                            world TEXT NOT NULL,
+                            x INTEGER NOT NULL,
+                            y INTEGER NOT NULL,
+                            z INTEGER NOT NULL,
+                            technology TEXT NOT NULL,
+                            level INTEGER DEFAULT 1,
+                            broken INTEGER DEFAULT 0,
+                            last_maintenance INTEGER DEFAULT 0,
+                            FOREIGN KEY (operator_id) REFERENCES operators(id)
+                        )
+                        """);
+                    st.execute("""
+                        CREATE TABLE IF NOT EXISTS subscribers (
+                            player_uuid TEXT PRIMARY KEY,
+                            operator_id TEXT NOT NULL,
+                            package_id INTEGER,
+                            package_minutes_left REAL DEFAULT 0,
+                            package_sms_left REAL DEFAULT 0,
+                            package_mb_left REAL DEFAULT 0,
+                            package_expires_at INTEGER DEFAULT 0,
+                            FOREIGN KEY (operator_id) REFERENCES operators(id)
+                        )
+                        """);
+                    st.execute("""
+                        CREATE TABLE IF NOT EXISTS agreements (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            operator_a TEXT NOT NULL,
+                            operator_b TEXT NOT NULL,
+                            type TEXT NOT NULL,
+                            roaming_minute REAL DEFAULT 0,
+                            roaming_sms REAL DEFAULT 0,
+                            roaming_mb REAL DEFAULT 0,
+                            call_minute REAL DEFAULT 0,
+                            call_sms REAL DEFAULT 0,
+                            pass_roaming_to_client INTEGER DEFAULT 0,
+                            pass_call_to_client INTEGER DEFAULT 0,
+                            active INTEGER DEFAULT 1,
+                            UNIQUE(operator_a, operator_b, type)
+                        )
+                        """);
+                    st.execute("""
+                        CREATE TABLE IF NOT EXISTS zones (
+                            id TEXT PRIMARY KEY,
+                            operator_id TEXT NOT NULL,
+                            type TEXT NOT NULL,
+                            display_name TEXT NOT NULL,
+                            extra_minute REAL DEFAULT 0,
+                            extra_sms REAL DEFAULT 0,
+                            extra_mb REAL DEFAULT 0,
+                            FOREIGN KEY (operator_id) REFERENCES operators(id)
+                        )
+                        """);
+                    st.execute("""
+                        CREATE TABLE IF NOT EXISTS zone_members (
+                            zone_id TEXT NOT NULL,
+                            target_operator_id TEXT NOT NULL,
+                            PRIMARY KEY (zone_id, target_operator_id)
+                        )
+                        """);
+                    st.execute("""
+                        CREATE TABLE IF NOT EXISTS packages (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            operator_id TEXT NOT NULL,
+                            name TEXT NOT NULL,
+                            price REAL NOT NULL,
+                            minutes REAL DEFAULT 0,
+                            sms REAL DEFAULT 0,
+                            mb REAL DEFAULT 0,
+                            duration_days INTEGER DEFAULT 30,
+                            zone_id TEXT,
+                            FOREIGN KEY (operator_id) REFERENCES operators(id)
+                        )
+                        """);
+                    st.execute("""
+                        CREATE TABLE IF NOT EXISTS websites (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            slug TEXT UNIQUE NOT NULL,
+                            owner_uuid TEXT NOT NULL,
+                            operator_id TEXT,
+                            server_id INTEGER,
+                            title TEXT NOT NULL,
+                            enabled INTEGER DEFAULT 1,
+                            broken INTEGER DEFAULT 0,
+                            template TEXT DEFAULT 'default'
+                        )
+                        """);
+                    st.execute("""
+                        CREATE TABLE IF NOT EXISTS website_lines (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            website_id INTEGER NOT NULL,
+                            sort_order INTEGER NOT NULL,
+                            content TEXT NOT NULL,
+                            FOREIGN KEY (website_id) REFERENCES websites(id)
+                        )
+                        """);
+                    st.execute("""
+                        CREATE TABLE IF NOT EXISTS datacenters (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            owner_uuid TEXT NOT NULL,
+                            world TEXT NOT NULL,
+                            x INTEGER NOT NULL,
+                            y INTEGER NOT NULL,
+                            z INTEGER NOT NULL,
+                            level INTEGER DEFAULT 1,
+                            broken INTEGER DEFAULT 0
+                        )
+                        """);
+                    st.execute("""
+                        CREATE TABLE IF NOT EXISTS player_meta (
+                            player_uuid TEXT PRIMARY KEY,
+                            last_operator_create INTEGER DEFAULT 0,
+                            has_created_operator INTEGER DEFAULT 0
+                        )
+                        """);
+                    st.execute("CREATE INDEX IF NOT EXISTS idx_stations_operator ON stations(operator_id)");
+                    st.execute("CREATE INDEX IF NOT EXISTS idx_stations_world ON stations(world, x, z)");
+                    st.execute("CREATE INDEX IF NOT EXISTS idx_subscribers_operator ON subscribers(operator_id)");
+                }
+                return null;
+            });
         } catch (SQLException e) {
-            throw new RuntimeException("Database error", e);
+            throw new RuntimeException("Failed to create database schema", e);
         }
     }
 
-    public void runAsyncVoid(java.util.function.Consumer<Connection> task) {
-        runAsync(conn -> {
-            task.accept(conn);
-            return null;
-        });
+    public <T> CompletableFuture<T> runAsync(SQLFunction<T> task) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return runSync(task);
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+        }, executor);
+    }
+
+    public <T> T runSync(SQLFunction<T> task) throws SQLException {
+        try (Connection conn = dataSource.getConnection()) {
+            return task.apply(conn);
+        }
+    }
+
+    public void runAsyncVoid(SQLFunction<Void> task) {
+        runAsync(task);
     }
 
     public void shutdown() {
