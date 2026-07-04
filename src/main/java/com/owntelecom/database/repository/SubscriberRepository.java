@@ -15,76 +15,96 @@ public class SubscriberRepository {
     }
 
     public Optional<Subscriber> findByPlayer(UUID playerUuid) {
-        return db.runSync(conn -> {
-            try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM subscribers WHERE player_uuid = ?")) {
-                ps.setString(1, playerUuid.toString());
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next()) {
-                        return Optional.of(map(rs));
+        try {
+            return db.runSync(conn -> {
+                try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM subscribers WHERE player_uuid = ?")) {
+                    ps.setString(1, playerUuid.toString());
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (rs.next()) {
+                            return Optional.of(map(rs));
+                        }
                     }
                 }
-            }
-            return Optional.empty();
-        });
+                return Optional.empty();
+            });
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public List<Subscriber> findByOperator(String operatorId) {
-        return db.runSync(conn -> {
-            List<Subscriber> list = new ArrayList<>();
-            try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM subscribers WHERE operator_id = ?")) {
-                ps.setString(1, operatorId.toLowerCase(Locale.ROOT));
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        list.add(map(rs));
+        try {
+            return db.runSync(conn -> {
+                List<Subscriber> list = new ArrayList<>();
+                try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM subscribers WHERE operator_id = ?")) {
+                    ps.setString(1, operatorId.toLowerCase(Locale.ROOT));
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            list.add(map(rs));
+                        }
                     }
                 }
-            }
-            return list;
-        });
+                return list;
+            });
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public void setOperator(UUID playerUuid, String operatorId) {
-        db.runSync(conn -> {
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "INSERT INTO subscribers (player_uuid, operator_id) VALUES (?,?) ON CONFLICT(player_uuid) DO UPDATE SET operator_id = excluded.operator_id")) {
-                ps.setString(1, playerUuid.toString());
-                ps.setString(2, operatorId.toLowerCase(Locale.ROOT));
-                ps.executeUpdate();
-            }
-            return null;
-        });
+        try {
+            db.runSync(conn -> {
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "INSERT INTO subscribers (player_uuid, operator_id) VALUES (?,?) ON CONFLICT(player_uuid) DO UPDATE SET operator_id = excluded.operator_id")) {
+                    ps.setString(1, playerUuid.toString());
+                    ps.setString(2, operatorId.toLowerCase(Locale.ROOT));
+                    ps.executeUpdate();
+                }
+                return null;
+            });
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public void clearOperator(UUID playerUuid) {
-        db.runSync(conn -> {
-            try (PreparedStatement ps = conn.prepareStatement("DELETE FROM subscribers WHERE player_uuid = ?")) {
-                ps.setString(1, playerUuid.toString());
-                ps.executeUpdate();
-            }
-            return null;
-        });
+        try {
+            db.runSync(conn -> {
+                try (PreparedStatement ps = conn.prepareStatement("DELETE FROM subscribers WHERE player_uuid = ?")) {
+                    ps.setString(1, playerUuid.toString());
+                    ps.executeUpdate();
+                }
+                return null;
+            });
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public void updatePackage(Subscriber subscriber) {
-        db.runSync(conn -> {
-            try (PreparedStatement ps = conn.prepareStatement("""
-                    UPDATE subscribers SET package_id = ?, package_minutes_left = ?, package_sms_left = ?,
-                    package_mb_left = ?, package_expires_at = ? WHERE player_uuid = ?
-                    """)) {
-                if (subscriber.packageId() != null) {
-                    ps.setInt(1, subscriber.packageId());
-                } else {
-                    ps.setNull(1, Types.INTEGER);
+        try {
+            db.runSync(conn -> {
+                try (PreparedStatement ps = conn.prepareStatement("""
+                        UPDATE subscribers SET package_id = ?, package_minutes_left = ?, package_sms_left = ?,
+                        package_mb_left = ?, package_expires_at = ? WHERE player_uuid = ?
+                        """)) {
+                    if (subscriber.packageId() != null) {
+                        ps.setInt(1, subscriber.packageId());
+                    } else {
+                        ps.setNull(1, Types.INTEGER);
+                    }
+                    ps.setDouble(2, subscriber.packageMinutesLeft());
+                    ps.setDouble(3, subscriber.packageSmsLeft());
+                    ps.setDouble(4, subscriber.packageMbLeft());
+                    ps.setLong(5, subscriber.packageExpiresAt());
+                    ps.setString(6, subscriber.playerUuid().toString());
+                    ps.executeUpdate();
                 }
-                ps.setDouble(2, subscriber.packageMinutesLeft());
-                ps.setDouble(3, subscriber.packageSmsLeft());
-                ps.setDouble(4, subscriber.packageMbLeft());
-                ps.setLong(5, subscriber.packageExpiresAt());
-                ps.setString(6, subscriber.playerUuid().toString());
-                ps.executeUpdate();
-            }
-            return null;
-        });
+                return null;
+            });
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private Subscriber map(ResultSet rs) throws SQLException {
