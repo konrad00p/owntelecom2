@@ -14,6 +14,7 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
+import java.sql.SQLException;
 import java.util.List;
 
 public class InternetBrowserGui implements Listener {
@@ -67,10 +68,14 @@ public class InternetBrowserGui implements Listener {
         }
         String slugLine = LegacyComponentSerializer.legacySection().serialize(item.getItemMeta().lore().get(0));
         String slug = slugLine.replace("/", "").replace("§7", "").trim();
-        plugin.getDatabaseManager().websites().findBySlug(slug).ifPresent(site -> {
-            player.closeInventory();
-            HandlerList.unregisterAll(this);
-            plugin.getModuleManager().getInternetModule().loadPage(player, site, null);
-        });
+        try {
+            plugin.getDatabaseManager().websites().findBySlug(slug).ifPresent(site -> {
+                player.closeInventory();
+                HandlerList.unregisterAll(this);
+                plugin.getModuleManager().getInternetModule().loadPage(player, site, null);
+            });
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 }
