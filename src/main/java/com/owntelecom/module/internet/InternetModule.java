@@ -9,6 +9,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 
+import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -31,7 +33,11 @@ public class InternetModule implements OwnTelecomModule {
     }
 
     public List<Website> listAvailableSites() {
-        return plugin.getDatabaseManager().websites().findEnabled();
+        try {
+            return plugin.getDatabaseManager().websites().findEnabled();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public void loadPage(Player player, Website website, Runnable onComplete) {
@@ -62,10 +68,14 @@ public class InternetModule implements OwnTelecomModule {
     }
 
     public void displayPage(Player player, Website website) {
-        List<String> lines = plugin.getDatabaseManager().websites().getLines(website.id());
-        player.sendMessage(plugin.getMessageService().colorize("&b=== " + website.title() + " ==="));
-        for (String line : lines) {
-            player.sendMessage(plugin.getMessageService().colorize(line));
+        try {
+            List<String> lines = plugin.getDatabaseManager().websites().getLines(website.id());
+            player.sendMessage(plugin.getMessageService().colorize("&b=== " + website.title() + " ==="));
+            for (String line : lines) {
+                player.sendMessage(plugin.getMessageService().colorize(line));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -94,18 +104,22 @@ public class InternetModule implements OwnTelecomModule {
     }
 
     public int createWebsite(Player player, String slug, String title) {
-        Website website = new Website(
-                0,
-                slug,
-                player.getUniqueId(),
-                plugin.getDatabaseManager().subscribers().findByPlayer(player.getUniqueId())
-                        .map(s -> s.operatorId()).orElse(null),
-                null,
-                title,
-                true,
-                false,
-                "default"
-        );
-        return plugin.getDatabaseManager().websites().create(website);
+        try {
+            Website website = new Website(
+                    0,
+                    slug,
+                    player.getUniqueId(),
+                    plugin.getDatabaseManager().subscribers().findByPlayer(player.getUniqueId())
+                            .map(s -> s.operatorId()).orElse(null),
+                    null,
+                    title,
+                    true,
+                    false,
+                    "default"
+            );
+            return plugin.getDatabaseManager().websites().create(website);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 }
